@@ -22,7 +22,7 @@ from homeassistant.const import (STATE_OFF, STATE_PAUSED, STATE_PLAYING,
                                  STATE_IDLE)
 from homeassistant import util
 
-REQUIREMENTS = ['pexpect==4.0.1']
+REQUIREMENTS = ['pexpect==4.6.0']
 _LOGGER = logging.getLogger(__name__)
 
 # SUPPORT_VOLUME_SET is close to available but we need volume up/down
@@ -294,8 +294,7 @@ class PandoraMediaPlayer(MediaPlayerDevice):
         time_remaining = int(cur_minutes) * 60 + int(cur_seconds)
         self._media_duration = int(total_minutes) * 60 + int(total_seconds)
 
-        if (time_remaining != self._time_remaining and
-                time_remaining != self._media_duration):
+        if time_remaining not in (self._time_remaining, self._media_duration):
             self._player_state = STATE_PLAYING
         elif self._player_state == STATE_PLAYING:
             self._player_state = STATE_PAUSED
