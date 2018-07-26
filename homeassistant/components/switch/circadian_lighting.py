@@ -120,11 +120,11 @@ class CircadianSwitch(SwitchDevice):
         self._attributes['disable_brightness_adjust'] = disable_brightness_adjust
         self._attributes['min_brightness'] = min_brightness
         self._attributes['max_brightness'] = max_brightness
-        self._attributes['sleep_entity'] = sleep_entity
+        self._attributes['sleep_entity'] = str(sleep_entity).strip('[]')
         self._attributes['sleep_state'] = sleep_state
         self._attributes['sleep_colortemp'] = sleep_colortemp
         self._attributes['sleep_brightness'] = sleep_brightness
-        self._attributes['disable_entity'] = disable_entity
+        self._attributes['disable_entity'] = str(disable_entity).strip('[]')
         self._attributes['disable_state'] = disable_state
         self._attributes['hs_color'] = self._hs_color
         self._attributes['brightness'] = self.calc_brightness()
