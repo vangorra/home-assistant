@@ -55,13 +55,13 @@ PLATFORM_SCHEMA = vol.Schema({
         vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
     vol.Optional(CONF_MAX_BRIGHT, default=DEFAULT_MAX_BRIGHT):
         vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
-    vol.Optional(CONF_SLEEP_ENTITY): cv.entity_ids,
+    vol.Optional(CONF_SLEEP_ENTITY): cv.entity_id,
     vol.Optional(CONF_SLEEP_STATE): cv.string,
     vol.Optional(CONF_SLEEP_CT):
         vol.All(vol.Coerce(int), vol.Range(min=1000, max=10000)),
     vol.Optional(CONF_SLEEP_BRIGHT):
         vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
-    vol.Optional(CONF_DISABLE_ENTITY): cv.entity_ids,
+    vol.Optional(CONF_DISABLE_ENTITY): cv.entity_id,
     vol.Optional(CONF_DISABLE_STATE): cv.string
 })
 
