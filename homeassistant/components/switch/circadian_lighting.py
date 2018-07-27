@@ -200,14 +200,14 @@ class CircadianSwitch(SwitchDevice):
         self._attributes['hs_color'] = self._hs_color
 
     def calc_ct(self):
-        if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']) == self._attributes['sleep_state']:
+        if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']).state == self._attributes['sleep_state']:
             _LOGGER.debug(self._name + " in Sleep mode")
             return color_temperature_kelvin_to_mired(self._attributes['sleep_colortemp'])
         else:
             return color_temperature_kelvin_to_mired(self._cl.data['colortemp'])
 
     def calc_rgb(self):
-        if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']) == self._attributes['sleep_state']:
+        if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']).state == self._attributes['sleep_state']:
             _LOGGER.debug(self._name + " in Sleep mode")
             return color_temperature_to_rgb(self._attributes['sleep_colortemp'])
         else:
@@ -220,7 +220,7 @@ class CircadianSwitch(SwitchDevice):
         if self._attributes['disable_brightness_adjust'] is True:
             return None
         else:
-            if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']) == self._attributes['sleep_state']:
+            if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']).state == self._attributes['sleep_state']:
                 _LOGGER.debug(self._name + " in Sleep mode")
                 return self._attributes['sleep_brightness']
             else:
@@ -245,7 +245,7 @@ class CircadianSwitch(SwitchDevice):
         elif self._cl.data is None:
             _LOGGER.debug(self._name + " could not retrieve Circadian Lighting data")
             return False
-        elif self._attributes['disable_entity'] is not None and self.hass.states.get(self._attributes['disable_entity']) == self._attributes['disable_state']:
+        elif self._attributes['disable_entity'] is not None and self.hass.states.get(self._attributes['disable_entity']).state == self._attributes['disable_state']:
             _LOGGER.debug(self._name + " disabled by " + str(self._attributes['disable_entity']))
             return False
         else:
@@ -302,5 +302,5 @@ class CircadianSwitch(SwitchDevice):
         self.adjust_lights([entity_id], 1)
 
     def sleep_state_changed(self, entity_id, from_state, to_state):
-        if to_state == self._attributes['sleep_state']:
+        if to_state.state == self._attributes['sleep_state']:
             self.adjust_lights(self._lights, 1)
