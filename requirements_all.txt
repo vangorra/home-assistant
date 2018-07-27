@@ -825,6 +825,9 @@ pyflexit==0.3
 # homeassistant.components.binary_sensor.flic
 pyflic-homeassistant==0.4.dev0
 
+# homeassistant.components.light.futurenow
+pyfnip==0.1
+
 # homeassistant.components.fritzbox
 pyfritzhome==0.3.7
 
@@ -1282,7 +1285,7 @@ somecomfort==0.5.2
 speedtest-cli==2.0.2
 
 # homeassistant.components.spider
-spiderpy==1.0.7
+spiderpy==1.1.0
 
 # homeassistant.components.sensor.spotcrime
 spotcrime==1.0.3
