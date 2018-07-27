@@ -142,6 +142,8 @@ class CircadianSwitch(SwitchDevice):
         """Register callbacks."""
         dispatcher_connect(hass, CIRCADIAN_LIGHTING_UPDATE_TOPIC, self.update_switch)
         track_state_change(hass, self._lights, self.light_state_changed)
+        if self._attributes['sleep_entity'] is not None:
+            track_state_change(hass, self._attributes['sleep_entity'], self.sleep_state_changed)
 
     @property
     def entity_id(self):
@@ -298,3 +300,7 @@ class CircadianSwitch(SwitchDevice):
 
     def light_state_changed(self, entity_id, from_state, to_state):
         self.adjust_lights([entity_id], 1)
+
+    def sleep_state_changed(self, entity_id, from_state, to_state):
+        if to_state == self._attributes['sleep_state']:
+            self.adjust_lights(self._lights, 1)
