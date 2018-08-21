@@ -77,8 +77,7 @@ async def test_create_new_user(hass, hass_storage):
         'password': 'test-pass',
     })
     assert step['type'] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    credentials = step['result']
-    user = await manager.async_get_or_create_user(credentials)
+    user = step['result']
     assert user is not None
     assert user.is_owner is False
     assert user.name == 'Test Name'
@@ -134,9 +133,8 @@ async def test_login_as_existing_user(mock_hass):
         'password': 'test-pass',
     })
     assert step['type'] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    credentials = step['result']
 
-    user = await manager.async_get_or_create_user(credentials)
+    user = step['result']
     assert user is not None
     assert user.id == 'mock-user'
     assert user.is_owner is False
@@ -166,16 +164,18 @@ async def test_linking_user_to_two_auth_providers(hass, hass_storage):
         'username': 'test-user',
         'password': 'test-pass',
     })
-    user = await manager.async_get_or_create_user(step['result'])
+    user = step['result']
     assert user is not None
 
-    step = await manager.login_flow.async_init(('insecure_example',
-                                                'another-provider'))
+    step = await manager.login_flow.async_init(
+        ('insecure_example', 'another-provider'),
+        context={'credential_only': True})
     step = await manager.login_flow.async_configure(step['flow_id'], {
         'username': 'another-user',
         'password': 'another-password',
     })
-    await manager.async_link_user(user, step['result'])
+    new_credential = step['result']
+    await manager.async_link_user(user, new_credential)
     assert len(user.credentials) == 2
 
 
@@ -197,11 +197,9 @@ async def test_saving_loading(hass, hass_storage):
         'username': 'test-user',
         'password': 'test-pass',
     })
-    user = await manager.async_get_or_create_user(step['result'])
+    user = step['result']
     await manager.async_activate_user(user)
-    refresh_token = await manager.async_create_refresh_token(user, CLIENT_ID)
-
-    manager.async_create_access_token(refresh_token)
+    await manager.async_create_refresh_token(user, CLIENT_ID)
 
     await flush_store(manager._store._store)
 
@@ -209,30 +207,6 @@ async def test_saving_loading(hass, hass_storage):
     users = await store2.async_get_users()
     assert len(users) == 1
     assert users[0] == user
-
-
-def test_access_token_expired():
-    """Test that the expired property on access tokens work."""
-    refresh_token = auth_models.RefreshToken(
-        user=None,
-        client_id='bla'
-    )
-
-    access_token = auth_models.AccessToken(
-        refresh_token=refresh_token
-    )
-
-    assert access_token.expired is False
-
-    with patch('homeassistant.util.dt.utcnow',
-               return_value=dt_util.utcnow() +
-               auth_const.ACCESS_TOKEN_EXPIRATION):
-        assert access_token.expired is True
-
-    almost_exp = \
-        dt_util.utcnow() + auth_const.ACCESS_TOKEN_EXPIRATION - timedelta(1)
-    with patch('homeassistant.util.dt.utcnow', return_value=almost_exp):
-        assert access_token.expired is False
 
 
 async def test_cannot_retrieve_expired_access_token(hass):
@@ -244,15 +218,20 @@ async def test_cannot_retrieve_expired_access_token(hass):
     assert refresh_token.client_id == CLIENT_ID
 
     access_token = manager.async_create_access_token(refresh_token)
-    assert manager.async_get_access_token(access_token.token) is access_token
+    assert (
+        await manager.async_validate_access_token(access_token)
+        is refresh_token
+    )
 
     with patch('homeassistant.util.dt.utcnow',
-               return_value=dt_util.utcnow() +
-               auth_const.ACCESS_TOKEN_EXPIRATION):
-        assert manager.async_get_access_token(access_token.token) is None
+               return_value=dt_util.utcnow() -
+               auth_const.ACCESS_TOKEN_EXPIRATION - timedelta(seconds=11)):
+        access_token = manager.async_create_access_token(refresh_token)
 
-    # Even with unpatched time, it should have been removed from manager
-    assert manager.async_get_access_token(access_token.token) is None
+    assert (
+        await manager.async_validate_access_token(access_token)
+        is None
+    )
 
 
 async def test_generating_system_user(hass):

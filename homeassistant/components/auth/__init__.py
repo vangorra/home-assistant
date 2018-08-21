@@ -1,62 +1,5 @@
 """Component to allow users to login and get tokens.
 
-All requests will require passing in a valid client ID and secret via HTTP
-Basic Auth.
-
-# GET /auth/providers
-
-Return a list of auth providers. Example:
-
-[
-    {
-        "name": "Local",
-        "id": null,
-        "type": "local_provider",
-    }
-]
-
-# POST /auth/login_flow
-
-Create a login flow. Will return the first step of the flow.
-
-Pass in parameter 'handler' to specify the auth provider to use. Auth providers
-are identified by type and id.
-
-{
-    "handler": ["local_provider", null]
-}
-
-Return value will be a step in a data entry flow. See the docs for data entry
-flow for details.
-
-{
-    "data_schema": [
-        {"name": "username", "type": "string"},
-        {"name": "password", "type": "string"}
-    ],
-    "errors": {},
-    "flow_id": "8f7e42faab604bcab7ac43c44ca34d58",
-    "handler": ["insecure_example", null],
-    "step_id": "init",
-    "type": "form"
-}
-
-# POST /auth/login_flow/{flow_id}
-
-Progress the flow. Most flows will be 1 page, but could optionally add extra
-login challenges, like TFA. Once the flow has finished, the returned step will
-have type "create_entry" and "result" key will contain an authorization code.
-
-{
-    "flow_id": "8f7e42faab604bcab7ac43c44ca34d58",
-    "handler": ["insecure_example", null],
-    "result": "411ee2f916e648d691e937ae9344681e",
-    "source": "user",
-    "title": "Example",
-    "type": "create_entry",
-    "version": 1
-}
-
 # POST /auth/token
 
 This is an OAuth2 endpoint for granting tokens. We currently support the grant
@@ -102,26 +45,21 @@ a limited expiration.
     "token_type": "Bearer"
 }
 """
-from datetime import timedelta
 import logging
 import uuid
+from datetime import timedelta
 
-import aiohttp.web
 import voluptuous as vol
 
-from homeassistant import data_entry_flow
-from homeassistant.components.http.ban import process_wrong_login, \
-    log_invalid_auth
-from homeassistant.core import callback
-from homeassistant.helpers.data_entry_flow import (
-    FlowManagerIndexView, FlowManagerResourceView)
+from homeassistant.auth.models import User, Credentials
 from homeassistant.components import websocket_api
-from homeassistant.components.http.view import HomeAssistantView
+from homeassistant.components.http.ban import log_invalid_auth
 from homeassistant.components.http.data_validator import RequestDataValidator
+from homeassistant.components.http.view import HomeAssistantView
+from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
-
 from . import indieauth
-
+from . import login_flow
 
 DOMAIN = 'auth'
 DEPENDENCIES = ['http']
@@ -131,117 +69,27 @@ SCHEMA_WS_CURRENT_USER = websocket_api.BASE_COMMAND_MESSAGE_SCHEMA.extend({
     vol.Required('type'): WS_TYPE_CURRENT_USER,
 })
 
+RESULT_TYPE_CREDENTIALS = 'credentials'
+RESULT_TYPE_USER = 'user'
+
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup(hass, config):
     """Component to allow users to login."""
-    store_credentials, retrieve_credentials = _create_cred_store()
+    store_result, retrieve_result = _create_auth_code_store()
 
-    hass.http.register_view(AuthProvidersView)
-    hass.http.register_view(LoginFlowIndexView(hass.auth.login_flow))
-    hass.http.register_view(
-        LoginFlowResourceView(hass.auth.login_flow, store_credentials))
-    hass.http.register_view(GrantTokenView(retrieve_credentials))
-    hass.http.register_view(LinkUserView(retrieve_credentials))
+    hass.http.register_view(GrantTokenView(retrieve_result))
+    hass.http.register_view(LinkUserView(retrieve_result))
 
     hass.components.websocket_api.async_register_command(
         WS_TYPE_CURRENT_USER, websocket_current_user,
         SCHEMA_WS_CURRENT_USER
     )
 
+    await login_flow.async_setup(hass, store_result)
+
     return True
-
-
-class AuthProvidersView(HomeAssistantView):
-    """View to get available auth providers."""
-
-    url = '/auth/providers'
-    name = 'api:auth:providers'
-    requires_auth = False
-
-    async def get(self, request):
-        """Get available auth providers."""
-        return self.json([{
-            'name': provider.name,
-            'id': provider.id,
-            'type': provider.type,
-        } for provider in request.app['hass'].auth.auth_providers])
-
-
-class LoginFlowIndexView(FlowManagerIndexView):
-    """View to create a config flow."""
-
-    url = '/auth/login_flow'
-    name = 'api:auth:login_flow'
-    requires_auth = False
-
-    async def get(self, request):
-        """Do not allow index of flows in progress."""
-        return aiohttp.web.Response(status=405)
-
-    @RequestDataValidator(vol.Schema({
-        vol.Required('client_id'): str,
-        vol.Required('handler'): vol.Any(str, list),
-        vol.Required('redirect_uri'): str,
-    }))
-    @log_invalid_auth
-    async def post(self, request, data):
-        """Create a new login flow."""
-        if not indieauth.verify_redirect_uri(data['client_id'],
-                                             data['redirect_uri']):
-            return self.json_message('invalid client id or redirect uri', 400)
-
-        # pylint: disable=no-value-for-parameter
-        return await super().post(request)
-
-
-class LoginFlowResourceView(FlowManagerResourceView):
-    """View to interact with the flow manager."""
-
-    url = '/auth/login_flow/{flow_id}'
-    name = 'api:auth:login_flow:resource'
-    requires_auth = False
-
-    def __init__(self, flow_mgr, store_credentials):
-        """Initialize the login flow resource view."""
-        super().__init__(flow_mgr)
-        self._store_credentials = store_credentials
-
-    async def get(self, request, flow_id):
-        """Do not allow getting status of a flow in progress."""
-        return self.json_message('Invalid flow specified', 404)
-
-    @RequestDataValidator(vol.Schema({
-        'client_id': str
-    }, extra=vol.ALLOW_EXTRA))
-    @log_invalid_auth
-    async def post(self, request, flow_id, data):
-        """Handle progressing a login flow request."""
-        client_id = data.pop('client_id')
-
-        if not indieauth.verify_client_id(client_id):
-            return self.json_message('Invalid client id', 400)
-
-        try:
-            result = await self._flow_mgr.async_configure(flow_id, data)
-        except data_entry_flow.UnknownFlow:
-            return self.json_message('Invalid flow specified', 404)
-        except vol.Invalid:
-            return self.json_message('User input malformed', 400)
-
-        if result['type'] != data_entry_flow.RESULT_TYPE_CREATE_ENTRY:
-            # @log_invalid_auth does not work here since it returns HTTP 200
-            # need manually log failed login attempts
-            if result['errors'] is not None and \
-                    result['errors'].get('base') == 'invalid_auth':
-                await process_wrong_login(request)
-            return self.json(self._prepare_result_json(result))
-
-        result.pop('data')
-        result['result'] = self._store_credentials(client_id, result['result'])
-
-        return self.json(result)
 
 
 class GrantTokenView(HomeAssistantView):
@@ -252,9 +100,9 @@ class GrantTokenView(HomeAssistantView):
     requires_auth = False
     cors_allowed = True
 
-    def __init__(self, retrieve_credentials):
+    def __init__(self, retrieve_user):
         """Initialize the grant token view."""
-        self._retrieve_credentials = retrieve_credentials
+        self._retrieve_user = retrieve_user
 
     @log_invalid_auth
     async def post(self, request):
@@ -290,15 +138,16 @@ class GrantTokenView(HomeAssistantView):
                 'error': 'invalid_request',
             }, status_code=400)
 
-        credentials = self._retrieve_credentials(client_id, code)
+        user = self._retrieve_user(client_id, RESULT_TYPE_USER, code)
 
-        if credentials is None:
+        if user is None or not isinstance(user, User):
             return self.json({
                 'error': 'invalid_request',
                 'error_description': 'Invalid code',
             }, status_code=400)
 
-        user = await hass.auth.async_get_or_create_user(credentials)
+        # refresh user
+        user = await hass.auth.async_get_user(user.id)
 
         if not user.is_active:
             return self.json({
@@ -311,7 +160,7 @@ class GrantTokenView(HomeAssistantView):
         access_token = hass.auth.async_create_access_token(refresh_token)
 
         return self.json({
-            'access_token': access_token.token,
+            'access_token': access_token,
             'token_type': 'Bearer',
             'refresh_token': refresh_token.token,
             'expires_in':
@@ -334,7 +183,7 @@ class GrantTokenView(HomeAssistantView):
                 'error': 'invalid_request',
             }, status_code=400)
 
-        refresh_token = await hass.auth.async_get_refresh_token(token)
+        refresh_token = await hass.auth.async_get_refresh_token_by_token(token)
 
         if refresh_token is None:
             return self.json({
@@ -349,7 +198,7 @@ class GrantTokenView(HomeAssistantView):
         access_token = hass.auth.async_create_access_token(refresh_token)
 
         return self.json({
-            'access_token': access_token.token,
+            'access_token': access_token,
             'token_type': 'Bearer',
             'expires_in':
                 int(refresh_token.access_token_expiration.total_seconds()),
@@ -376,7 +225,7 @@ class LinkUserView(HomeAssistantView):
         user = request['hass_user']
 
         credentials = self._retrieve_credentials(
-            data['client_id'], data['code'])
+            data['client_id'], RESULT_TYPE_CREDENTIALS, data['code'])
 
         if credentials is None:
             return self.json_message('Invalid code', status_code=400)
@@ -386,37 +235,45 @@ class LinkUserView(HomeAssistantView):
 
 
 @callback
-def _create_cred_store():
-    """Create a credential store."""
-    temp_credentials = {}
+def _create_auth_code_store():
+    """Create an in memory store."""
+    temp_results = {}
 
     @callback
-    def store_credentials(client_id, credentials):
-        """Store credentials and return a code to retrieve it."""
+    def store_result(client_id, result):
+        """Store flow result and return a code to retrieve it."""
+        if isinstance(result, User):
+            result_type = RESULT_TYPE_USER
+        elif isinstance(result, Credentials):
+            result_type = RESULT_TYPE_CREDENTIALS
+        else:
+            raise ValueError('result has to be either User or Credentials')
+
         code = uuid.uuid4().hex
-        temp_credentials[(client_id, code)] = (dt_util.utcnow(), credentials)
+        temp_results[(client_id, result_type, code)] = \
+            (dt_util.utcnow(), result_type, result)
         return code
 
     @callback
-    def retrieve_credentials(client_id, code):
-        """Retrieve credentials."""
-        key = (client_id, code)
+    def retrieve_result(client_id, result_type, code):
+        """Retrieve flow result."""
+        key = (client_id, result_type, code)
 
-        if key not in temp_credentials:
+        if key not in temp_results:
             return None
 
-        created, credentials = temp_credentials.pop(key)
+        created, _, result = temp_results.pop(key)
 
         # OAuth 4.2.1
         # The authorization code MUST expire shortly after it is issued to
         # mitigate the risk of leaks.  A maximum authorization code lifetime of
         # 10 minutes is RECOMMENDED.
         if dt_util.utcnow() - created < timedelta(minutes=10):
-            return credentials
+            return result
 
         return None
 
-    return store_credentials, retrieve_credentials
+    return store_result, retrieve_result
 
 
 @callback
