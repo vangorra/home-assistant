@@ -18,7 +18,7 @@ from homeassistant.const import (
     CONF_ACCESS_TOKEN, CONF_HOST, CONF_NAME, STATE_OFF, STATE_ON,
     STATE_UNKNOWN)
 from homeassistant.helpers import config_validation as cv
-import homeassistant.util as util
+from homeassistant import util
 
 REQUIREMENTS = ['pyvizio==0.0.3']
 
@@ -62,7 +62,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 
     device = VizioDevice(host, token, name, volume_step)
     if device.validate_setup() is False:
-        _LOGGER.error("Failed to setup Vizio TV platform, "
+        _LOGGER.error("Failed to set up Vizio TV platform, "
                       "please check if host and API key are correct")
         return
 
@@ -95,7 +95,7 @@ class VizioDevice(MediaPlayerDevice):
         if is_on is None:
             self._state = STATE_UNKNOWN
             return
-        elif is_on is False:
+        if is_on is False:
             self._state = STATE_OFF
         else:
             self._state = STATE_ON

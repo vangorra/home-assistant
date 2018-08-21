@@ -56,7 +56,7 @@ REQUIREMENTS = ['pychannels==1.0.0']
 
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
-    """Setup the Channels platform."""
+    """Set up the Channels platform."""
     device = ChannelsPlayer(
         config.get('name'),
         config.get(CONF_HOST),
@@ -217,7 +217,7 @@ class ChannelsPlayer(MediaPlayerDevice):
         """Image url of current playing media."""
         if self.now_playing_image_url:
             return self.now_playing_image_url
-        elif self.channel_image_url:
+        if self.channel_image_url:
             return self.channel_image_url
 
         return 'https://getchannels.com/assets/img/icon-1024.png'

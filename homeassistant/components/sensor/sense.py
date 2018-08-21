@@ -19,7 +19,7 @@ from homeassistant.util import Throttle
 from homeassistant.util import slugify
 import homeassistant.helpers.config_validation as cv
 
-REQUIREMENTS = ['sense_energy==0.3.1']
+REQUIREMENTS = ['sense_energy==0.4.1']
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ ACTIVE_TYPE = 'active'
 DEVICE_TYPE = 'device'
 
 
-class SensorConfig(object):
+class SensorConfig:
     """Data structure holding sensor config."""
 
     def __init__(self, name, sensor_type):
@@ -188,7 +188,12 @@ class Sense(Entity):
 
     def update(self):
         """Get the latest data, update state."""
-        self.update_sensor()
+        from sense_energy import SenseAPITimeoutException
+        try:
+            self.update_sensor()
+        except SenseAPITimeoutException:
+            _LOGGER.error("Timeout retrieving data")
+            return
 
         if self._sensor_type == DEVICE_TYPE:
             global realtime_devices
