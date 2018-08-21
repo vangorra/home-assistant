@@ -256,7 +256,7 @@ class CircadianSwitch(SwitchDevice):
             if transition == None:
                 transition = self._cl.data['transition']
 
-            brightness = (self._attributes['brightness'] / 100) * 255
+            brightness = (self._attributes['brightness'] / 100) * 255 if self._attributes['brightness'] is not None else None
 
             for light in lights:
                 """Set color of array of ct light."""
