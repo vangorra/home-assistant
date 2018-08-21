@@ -18,9 +18,9 @@ from voluptuous.humanize import humanize_error
 from homeassistant.const import (
     MATCH_ALL, EVENT_TIME_CHANGED, EVENT_HOMEASSISTANT_STOP,
     __version__)
-from homeassistant.core import callback
+from homeassistant.core import Context, callback
 from homeassistant.loader import bind_hass
-from homeassistant.remote import JSONEncoder
+from homeassistant.helpers.json import JSONEncoder
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_get_all_descriptions
 from homeassistant.components.http import HomeAssistantView
@@ -262,6 +262,18 @@ class ActiveConnection:
         self._handle_task = None
         self._writer_task = None
 
+    @property
+    def user(self):
+        """Return the user associated with the connection."""
+        return self.request.get('hass_user')
+
+    def context(self, msg):
+        """Return a context."""
+        user = self.user
+        if user is None:
+            return Context()
+        return Context(user_id=user.id)
+
     def debug(self, message1, message2=''):
         """Print a debug message."""
         _LOGGER.debug("WS %s: %s %s", id(self.wsock), message1, message2)
@@ -287,7 +299,7 @@ class ActiveConnection:
 
     @callback
     def send_message_outside(self, message):
-        """Send a message to the client outside of the main task.
+        """Send a message to the client.
 
         Closes connection if the client is not reading the messages.
 
@@ -313,7 +325,6 @@ class ActiveConnection:
         await wsock.prepare(request)
         self.debug("Connected")
 
-        # Get a reference to current task so we can cancel our connection
         self._handle_task = asyncio.Task.current_task(loop=self.hass.loop)
 
         @callback
@@ -332,7 +343,10 @@ class ActiveConnection:
             if request[KEY_AUTHENTICATED]:
                 authenticated = True
 
-            else:
+            # always request auth when auth is active
+            #   even request passed pre-authentication (trusted networks)
+            # or when using legacy api_password
+            if self.hass.auth.active or not authenticated:
                 self.debug("Request auth")
                 await self.wsock.send_json(auth_required_message())
                 msg = await wsock.receive_json()
@@ -340,11 +354,12 @@ class ActiveConnection:
 
                 if self.hass.auth.active and 'access_token' in msg:
                     self.debug("Received access_token")
-                    token = self.hass.auth.async_get_access_token(
-                        msg['access_token'])
-                    authenticated = token is not None
+                    refresh_token = \
+                        await self.hass.auth.async_validate_access_token(
+                            msg['access_token'])
+                    authenticated = refresh_token is not None
                     if authenticated:
-                        request['hass_user'] = token.refresh_token.user
+                        request['hass_user'] = refresh_token.user
 
                 elif ((not self.hass.auth.active or
                        self.hass.auth.support_legacy) and
@@ -507,8 +522,13 @@ def handle_call_service(hass, connection, msg):
     """
     async def call_service_helper(msg):
         """Call a service and fire complete message."""
+        blocking = True
+        if (msg['domain'] == 'homeassistant' and
+                msg['service'] in ['restart', 'stop']):
+            blocking = False
         await hass.services.async_call(
-            msg['domain'], msg['service'], msg.get('service_data'), True)
+            msg['domain'], msg['service'], msg.get('service_data'), blocking,
+            connection.context(msg))
         connection.send_message_outside(result_message(msg['id']))
 
     hass.async_add_job(call_service_helper(msg))
