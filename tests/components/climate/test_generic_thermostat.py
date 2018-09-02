@@ -9,7 +9,6 @@ import homeassistant.core as ha
 from homeassistant.core import callback, CoreState, State
 from homeassistant.setup import setup_component, async_setup_component
 from homeassistant.const import (
-    ATTR_UNIT_OF_MEASUREMENT,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     STATE_ON,
@@ -22,6 +21,7 @@ from homeassistant import loader
 from homeassistant.util.unit_system import METRIC_SYSTEM
 from homeassistant.util.async_ import run_coroutine_threadsafe
 from homeassistant.components import climate, input_boolean, switch
+from homeassistant.components.climate import STATE_HEAT, STATE_COOL
 import homeassistant.components as comps
 from tests.common import (assert_setup_component, get_test_home_assistant,
                           mock_restore_cache)
@@ -141,11 +141,9 @@ class TestGenericThermostatHeaterSwitching(unittest.TestCase):
         self.assertEqual(STATE_ON,
                          self.hass.states.get(heater_switch).state)
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
 
 class TestClimateGenericThermostat(unittest.TestCase):
@@ -222,30 +220,15 @@ class TestClimateGenericThermostat(unittest.TestCase):
         state = self.hass.states.get(ENTITY)
         self.assertEqual(23, state.attributes.get('temperature'))
 
-    def test_sensor_bad_unit(self):
-        """Test sensor that have bad unit."""
-        state = self.hass.states.get(ENTITY)
-        temp = state.attributes.get('current_temperature')
-        unit = state.attributes.get('unit_of_measurement')
-
-        self._setup_sensor(22.0, unit='bad_unit')
-        self.hass.block_till_done()
-
-        state = self.hass.states.get(ENTITY)
-        self.assertEqual(unit, state.attributes.get('unit_of_measurement'))
-        self.assertEqual(temp, state.attributes.get('current_temperature'))
-
     def test_sensor_bad_value(self):
         """Test sensor that have None as state."""
         state = self.hass.states.get(ENTITY)
         temp = state.attributes.get('current_temperature')
-        unit = state.attributes.get('unit_of_measurement')
 
         self._setup_sensor(None)
         self.hass.block_till_done()
 
         state = self.hass.states.get(ENTITY)
-        self.assertEqual(unit, state.attributes.get('unit_of_measurement'))
         self.assertEqual(temp, state.attributes.get('current_temperature'))
 
     def test_set_target_temp_heater_on(self):
@@ -367,11 +350,9 @@ class TestClimateGenericThermostat(unittest.TestCase):
         self.assertEqual(SERVICE_TURN_ON, call.service)
         self.assertEqual(ENT_SWITCH, call.data['entity_id'])
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
     def _setup_switch(self, is_on):
         """Set up the test switch."""
@@ -532,11 +513,9 @@ class TestClimateGenericThermostatACMode(unittest.TestCase):
         self.hass.block_till_done()
         self.assertEqual(0, len(self.calls))
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
     def _setup_switch(self, is_on):
         """Set up the test switch."""
@@ -626,11 +605,9 @@ class TestClimateGenericThermostatACModeMinCycle(unittest.TestCase):
         self.assertEqual(SERVICE_TURN_OFF, call.service)
         self.assertEqual(ENT_SWITCH, call.data['entity_id'])
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
     def _setup_switch(self, is_on):
         """Set up the test switch."""
@@ -719,11 +696,9 @@ class TestClimateGenericThermostatMinCycle(unittest.TestCase):
         self.assertEqual(SERVICE_TURN_OFF, call.service)
         self.assertEqual(ENT_SWITCH, call.data['entity_id'])
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
     def _setup_switch(self, is_on):
         """Set up the test switch."""
@@ -812,11 +787,9 @@ class TestClimateGenericThermostatACKeepAlive(unittest.TestCase):
         """Send a time changed event."""
         self.hass.bus.fire(ha.EVENT_TIME_CHANGED, {ha.ATTR_NOW: now})
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
     def _setup_switch(self, is_on):
         """Set up the test switch."""
@@ -904,11 +877,9 @@ class TestClimateGenericThermostatKeepAlive(unittest.TestCase):
         """Send a time changed event."""
         self.hass.bus.fire(ha.EVENT_TIME_CHANGED, {ha.ATTR_NOW: now})
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
     def _setup_switch(self, is_on):
         """Set up the test switch."""
@@ -922,6 +893,90 @@ class TestClimateGenericThermostatKeepAlive(unittest.TestCase):
 
         self.hass.services.register(ha.DOMAIN, SERVICE_TURN_ON, log_call)
         self.hass.services.register(ha.DOMAIN, SERVICE_TURN_OFF, log_call)
+
+
+class TestClimateGenericThermostatTurnOnOff(unittest.TestCase):
+    """Test the Generic Thermostat."""
+
+    HEAT_ENTITY = 'climate.test_heat'
+    COOL_ENTITY = 'climate.test_cool'
+
+    def setUp(self):  # pylint: disable=invalid-name
+        """Set up things to be run when tests are started."""
+        self.hass = get_test_home_assistant()
+        assert setup_component(self.hass, climate.DOMAIN, {'climate': [
+            {
+                'platform': 'generic_thermostat',
+                'name': 'test_heat',
+                'heater': ENT_SWITCH,
+                'target_sensor': ENT_SENSOR
+            },
+            {
+                'platform': 'generic_thermostat',
+                'name': 'test_cool',
+                'heater': ENT_SWITCH,
+                'ac_mode': True,
+                'target_sensor': ENT_SENSOR
+            }
+        ]})
+
+    def tearDown(self):  # pylint: disable=invalid-name
+        """Stop down everything that was started."""
+        self.hass.stop()
+
+    def test_turn_on_when_off(self):
+        """Test if climate.turn_on turns on a turned off device."""
+        climate.set_operation_mode(self.hass, STATE_OFF)
+        self.hass.block_till_done()
+        self.hass.services.call('climate', SERVICE_TURN_ON)
+        self.hass.block_till_done()
+        state_heat = self.hass.states.get(self.HEAT_ENTITY)
+        state_cool = self.hass.states.get(self.COOL_ENTITY)
+        self.assertEqual(STATE_HEAT,
+                         state_heat.attributes.get('operation_mode'))
+        self.assertEqual(STATE_COOL,
+                         state_cool.attributes.get('operation_mode'))
+
+    def test_turn_on_when_on(self):
+        """Test if climate.turn_on does nothing to a turned on device."""
+        climate.set_operation_mode(self.hass, STATE_HEAT, self.HEAT_ENTITY)
+        climate.set_operation_mode(self.hass, STATE_COOL, self.COOL_ENTITY)
+        self.hass.block_till_done()
+        self.hass.services.call('climate', SERVICE_TURN_ON)
+        self.hass.block_till_done()
+        state_heat = self.hass.states.get(self.HEAT_ENTITY)
+        state_cool = self.hass.states.get(self.COOL_ENTITY)
+        self.assertEqual(STATE_HEAT,
+                         state_heat.attributes.get('operation_mode'))
+        self.assertEqual(STATE_COOL,
+                         state_cool.attributes.get('operation_mode'))
+
+    def test_turn_off_when_on(self):
+        """Test if climate.turn_off turns off a turned on device."""
+        climate.set_operation_mode(self.hass, STATE_HEAT, self.HEAT_ENTITY)
+        climate.set_operation_mode(self.hass, STATE_COOL, self.COOL_ENTITY)
+        self.hass.block_till_done()
+        self.hass.services.call('climate', SERVICE_TURN_OFF)
+        self.hass.block_till_done()
+        state_heat = self.hass.states.get(self.HEAT_ENTITY)
+        state_cool = self.hass.states.get(self.COOL_ENTITY)
+        self.assertEqual(STATE_OFF,
+                         state_heat.attributes.get('operation_mode'))
+        self.assertEqual(STATE_OFF,
+                         state_cool.attributes.get('operation_mode'))
+
+    def test_turn_off_when_off(self):
+        """Test if climate.turn_off does nothing to a turned off device."""
+        climate.set_operation_mode(self.hass, STATE_OFF)
+        self.hass.block_till_done()
+        self.hass.services.call('climate', SERVICE_TURN_OFF)
+        self.hass.block_till_done()
+        state_heat = self.hass.states.get(self.HEAT_ENTITY)
+        state_cool = self.hass.states.get(self.COOL_ENTITY)
+        self.assertEqual(STATE_OFF,
+                         state_heat.attributes.get('operation_mode'))
+        self.assertEqual(STATE_OFF,
+                         state_cool.attributes.get('operation_mode'))
 
 
 @asyncio.coroutine
@@ -1047,11 +1102,9 @@ class TestClimateGenericThermostatRestoreState(unittest.TestCase):
             'ac_mode': True
         }})
 
-    def _setup_sensor(self, temp, unit=TEMP_CELSIUS):
+    def _setup_sensor(self, temp):
         """Set up the test sensor."""
-        self.hass.states.set(ENT_SENSOR, temp, {
-            ATTR_UNIT_OF_MEASUREMENT: unit
-        })
+        self.hass.states.set(ENT_SENSOR, temp)
 
     def _setup_switch(self, is_on):
         """Set up the test switch."""
