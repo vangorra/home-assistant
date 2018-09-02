@@ -12,7 +12,7 @@ from homeassistant.helpers.dispatcher import dispatcher_connect
 from homeassistant.helpers.entity import Entity
 
 import astral
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 _LOGGER = logging.getLogger(__name__)
 

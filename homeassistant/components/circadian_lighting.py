@@ -27,8 +27,6 @@ Technical notes: I had to make a lot of assumptions when writing this app
         lights to 2700K (warm white) until your hub goes into Night mode
 """
 
-REQUIREMENTS = ['timezonefinder==3.0.1']
-
 import logging
 
 import voluptuous as vol
@@ -47,9 +45,8 @@ from homeassistant.util.color import (
     color_xy_to_hs)
 from homeassistant.util.dt import now as dt_now
 
-from timezonefinder import TimezoneFinder
 import astral
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,8 +103,6 @@ def setup(hass, config):
     else:
         longitude = conf.get(CONF_LONGITUDE)
 
-    timezone = get_timezone(latitude, longitude)
-
     load_platform(hass, 'sensor', DOMAIN)
 
     interval = conf.get(CONF_INTERVAL)
@@ -115,23 +110,19 @@ def setup(hass, config):
 
     cl = CircadianLighting(hass, min_colortemp, max_colortemp,
                     sunrise_offset, sunset_offset, sunrise_time, sunset_time,
-                    latitude, longitude, timezone,
+                    latitude, longitude,
                     interval, transition)
 
     hass.data[DATA_CIRCADIAN_LIGHTING] = cl
 
     return True
 
-def get_timezone(latitude, longitude):
-    tf = TimezoneFinder()
-    return tf.timezone_at(lng=longitude, lat=latitude)
-
 class CircadianLighting(object):
     """Calculate universal Circadian values."""
 
     def __init__(self, hass, min_colortemp, max_colortemp,
                     sunrise_offset, sunset_offset, sunrise_time, sunset_time,
-                    latitude, longitude, timezone,
+                    latitude, longitude,
                     interval, transition):
         self.hass = hass
         self.data = {}
@@ -143,7 +134,6 @@ class CircadianLighting(object):
         self.data['sunset_time'] = sunset_time
         self.data['latitude'] = latitude
         self.data['longitude'] = longitude
-        self.data['timezone'] = timezone
         self.data['interval'] = interval
         self.data['transition'] = transition
         self.data['percent'] = self.calc_percent()
@@ -173,7 +163,6 @@ class CircadianLighting(object):
             location = astral.Location()
             location.latitude = self.data['latitude']
             location.longitude = self.data['longitude']
-            location.timezone = self.data['timezone']
             if self.data['sunrise_time'] is not None:
                 if date is None:
                     date = dt_now()
