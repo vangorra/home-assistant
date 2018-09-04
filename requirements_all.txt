@@ -168,7 +168,7 @@ batinfo==0.4.2
 beautifulsoup4==4.6.3
 
 # homeassistant.components.zha
-bellows==0.6.0
+bellows==0.7.0
 
 # homeassistant.components.bmw_connected_drive
 bimmer_connected==0.5.1
@@ -448,7 +448,7 @@ hole==0.3.0
 holidays==0.9.6
 
 # homeassistant.components.frontend
-home-assistant-frontend==20180831.0
+home-assistant-frontend==20180903.0
 
 # homeassistant.components.homekit_controller
 # homekit==0.10
@@ -820,7 +820,7 @@ pycsspeechtts==1.0.2
 pydaikin==0.4
 
 # homeassistant.components.deconz
-pydeconz==45
+pydeconz==47
 
 # homeassistant.components.zwave
 pydispatcher==2.0.5
@@ -990,7 +990,7 @@ pynut2==2.1.2
 pynx584==0.4
 
 # homeassistant.components.openuv
-pyopenuv==1.0.1
+pyopenuv==1.0.4
 
 # homeassistant.components.iota
 pyota==2.0.5
@@ -1530,4 +1530,4 @@ ziggo-mediabox-xl==1.0.0
 zigpy-xbee==0.1.1
 
 # homeassistant.components.zha
-zigpy==0.1.0
+zigpy==0.2.0
