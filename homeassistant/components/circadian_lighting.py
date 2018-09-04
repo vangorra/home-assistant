@@ -39,7 +39,7 @@ from homeassistant.const import (
 from homeassistant.util import Throttle
 from homeassistant.helpers.discovery import load_platform
 from homeassistant.helpers.dispatcher import dispatcher_send
-from homeassistant.helpers.event import track_point_in_time, track_sunrise, track_sunset
+from homeassistant.helpers.event import track_sunrise, track_sunset, track_time_change
 from homeassistant.util.color import (
     color_temperature_to_rgb, color_RGB_to_xy,
     color_xy_to_hs)
@@ -143,11 +143,11 @@ class CircadianLighting(object):
         self.update = Throttle(timedelta(seconds=interval))(self._update)
 
         if self.data['sunrise_time'] is not None:
-            track_point_in_time(self.hass, self._update, self.data['sunrise_time'])
+            track_time_change(self.hass, self._update, hour=int(self.data['sunrise_time'].strftime("%H")), minute=int(self.data['sunrise_time'].strftime("%M")), second=int(self.data['sunrise_time'].strftime("%S")))
         else:
             track_sunrise(self.hass, self._update, self.data['sunrise_offset'])
         if self.data['sunset_time'] is not None:
-            track_point_in_time(self.hass, self._update, self.data['sunset_time'])
+            track_time_change(self.hass, self._update, hour=int(self.data['sunset_time'].strftime("%H")), minute=int(self.data['sunset_time'].strftime("%M")), second=int(self.data['sunset_time'].strftime("%S")))
         else:
             track_sunset(self.hass, self._update, self.data['sunset_offset'])
 
@@ -155,8 +155,8 @@ class CircadianLighting(object):
         if self.data['sunrise_time'] is not None and self.data['sunset_time'] is not None:
             if date is None:
                 date = dt_now()
-            sunrise = date.replace(self.data['sunrise_time'])
-            sunset = date.replace(self.data['sunset_time'])
+            sunrise = date.replace(hour=int(self.data['sunrise_time'].strftime("%H")), minute=int(self.data['sunrise_time'].strftime("%M")), second=int(self.data['sunrise_time'].strftime("%S")), microsecond=int(self.data['sunrise_time'].strftime("%f")))
+            sunset = date.replace(hour=int(self.data['sunset_time'].strftime("%H")), minute=int(self.data['sunset_time'].strftime("%M")), second=int(self.data['sunset_time'].strftime("%S")), microsecond=int(self.data['sunset_time'].strftime("%f")))
             solar_noon = sunrise + (sunset - sunrise)/2
             solar_midnight = sunset + ((sunrise + timedelta(days=1)) - sunset)/2
         else:
@@ -276,7 +276,7 @@ class CircadianLighting(object):
         hs = color_xy_to_hs(vX, vY)
         return hs
 
-    def _update(self):
+    def _update(self, *args, **kwargs):
         """Update Circadian Values."""
         self.data['percent'] = self.calc_percent()
         self.data['colortemp'] = self.calc_colortemp()

@@ -83,7 +83,7 @@ class CircadianSensor(Entity):
     @property
     def device_state_attributes(self):
         """Return the attributes of the sensor."""
-        return self._attributes
+        return dict((k,str(v)) for k,v in self._attributes.items())
 
     def update(self):
         """Fetch new state data for the sensor.
