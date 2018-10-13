@@ -21,7 +21,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import (
     CONF_PASSWORD, CONF_PAYLOAD, CONF_PORT, CONF_PROTOCOL, CONF_USERNAME,
-    CONF_VALUE_TEMPLATE, EVENT_HOMEASSISTANT_START, EVENT_HOMEASSISTANT_STOP)
+    CONF_VALUE_TEMPLATE, EVENT_HOMEASSISTANT_STOP, CONF_NAME)
 from homeassistant.core import Event, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
@@ -36,7 +36,7 @@ from homeassistant.util.async_ import (
 
 # Loading the config flow file will register the flow
 from . import config_flow  # noqa  # pylint: disable=unused-import
-from .const import CONF_BROKER
+from .const import CONF_BROKER, CONF_DISCOVERY, DEFAULT_DISCOVERY
 from .server import HBMQTT_CONFIG_SCHEMA
 
 REQUIREMENTS = ['paho-mqtt==1.4.0']
@@ -47,13 +47,13 @@ DOMAIN = 'mqtt'
 
 DATA_MQTT = 'mqtt'
 DATA_MQTT_CONFIG = 'mqtt_config'
+DATA_MQTT_HASS_CONFIG = 'mqtt_hass_config'
 
 SERVICE_PUBLISH = 'publish'
 
 CONF_EMBEDDED = 'embedded'
 
 CONF_CLIENT_ID = 'client_id'
-CONF_DISCOVERY = 'discovery'
 CONF_DISCOVERY_PREFIX = 'discovery_prefix'
 CONF_KEEPALIVE = 'keepalive'
 CONF_CERTIFICATE = 'certificate'
@@ -73,6 +73,12 @@ CONF_PAYLOAD_NOT_AVAILABLE = 'payload_not_available'
 CONF_QOS = 'qos'
 CONF_RETAIN = 'retain'
 
+CONF_IDENTIFIERS = 'identifiers'
+CONF_CONNECTIONS = 'connections'
+CONF_MANUFACTURER = 'manufacturer'
+CONF_MODEL = 'model'
+CONF_SW_VERSION = 'sw_version'
+
 PROTOCOL_31 = '3.1'
 PROTOCOL_311 = '3.1.1'
 
@@ -81,7 +87,6 @@ DEFAULT_KEEPALIVE = 60
 DEFAULT_QOS = 0
 DEFAULT_RETAIN = False
 DEFAULT_PROTOCOL = PROTOCOL_311
-DEFAULT_DISCOVERY = False
 DEFAULT_DISCOVERY_PREFIX = 'homeassistant'
 DEFAULT_TLS_PROTOCOL = 'auto'
 DEFAULT_PAYLOAD_AVAILABLE = 'online'
@@ -92,6 +97,7 @@ ATTR_PAYLOAD = 'payload'
 ATTR_PAYLOAD_TEMPLATE = 'payload_template'
 ATTR_QOS = CONF_QOS
 ATTR_RETAIN = CONF_RETAIN
+ATTR_DISCOVERY_HASH = 'discovery_hash'
 
 MAX_RECONNECT_WAIT = 300  # seconds
 
@@ -141,6 +147,15 @@ def valid_publish_topic(value: Any) -> str:
     value = valid_topic(value)
     if '+' in value or '#' in value:
         raise vol.Invalid("Wildcards can not be used in topic names")
+    return value
+
+
+def validate_device_has_at_least_one_identifier(value: ConfigType) -> \
+        ConfigType:
+    """Validate that a device info entry has at least one identifying value."""
+    if not value.get(CONF_IDENTIFIERS) and not value.get(CONF_CONNECTIONS):
+        raise vol.Invalid("Device must have at least one identifying value in "
+                          "'identifiers' and/or 'connections'")
     return value
 
 
@@ -198,6 +213,17 @@ MQTT_AVAILABILITY_SCHEMA = vol.Schema({
                  default=DEFAULT_PAYLOAD_NOT_AVAILABLE): cv.string,
 })
 
+MQTT_ENTITY_DEVICE_INFO_SCHEMA = vol.All(vol.Schema({
+    vol.Optional(CONF_IDENTIFIERS, default=list):
+        vol.All(cv.ensure_list, [cv.string]),
+    vol.Optional(CONF_CONNECTIONS, default=list):
+        vol.All(cv.ensure_list, [vol.All(vol.Length(2), [cv.string])]),
+    vol.Optional(CONF_MANUFACTURER): cv.string,
+    vol.Optional(CONF_MODEL): cv.string,
+    vol.Optional(CONF_NAME): cv.string,
+    vol.Optional(CONF_SW_VERSION): cv.string,
+}), validate_device_has_at_least_one_identifier)
+
 MQTT_BASE_PLATFORM_SCHEMA = cv.PLATFORM_SCHEMA.extend(SCHEMA_BASE)
 
 # Sensor type platforms subscribe to MQTT events
@@ -254,7 +280,8 @@ def async_publish(hass: HomeAssistantType, topic: Any, payload, qos=None,
     """Publish message to an MQTT topic."""
     data = _build_publish_data(topic, qos, retain)
     data[ATTR_PAYLOAD] = payload
-    hass.async_add_job(hass.services.async_call(DOMAIN, SERVICE_PUBLISH, data))
+    hass.async_create_task(
+        hass.services.async_call(DOMAIN, SERVICE_PUBLISH, data))
 
 
 @bind_hass
@@ -320,23 +347,23 @@ async def _async_setup_server(hass: HomeAssistantType, config: ConfigType):
     return broker_config
 
 
-async def _async_setup_discovery(hass: HomeAssistantType,
-                                 config: ConfigType) -> bool:
+async def _async_setup_discovery(hass: HomeAssistantType, conf: ConfigType,
+                                 hass_config: ConfigType,
+                                 config_entry) -> bool:
     """Try to start the discovery of MQTT devices.
 
     This method is a coroutine.
     """
-    conf = config.get(DOMAIN, {})  # type: ConfigType
-
     discovery = await async_prepare_setup_platform(
-        hass, config, DOMAIN, 'discovery')
+        hass, hass_config, DOMAIN, 'discovery')
 
     if discovery is None:
         _LOGGER.error("Unable to load MQTT discovery")
         return False
 
     success = await discovery.async_start(
-        hass, conf[CONF_DISCOVERY_PREFIX], config)  # type: bool
+        hass, conf[CONF_DISCOVERY_PREFIX], hass_config,
+        config_entry)  # type: bool
 
     return success
 
@@ -344,6 +371,11 @@ async def _async_setup_discovery(hass: HomeAssistantType,
 async def async_setup(hass: HomeAssistantType, config: ConfigType) -> bool:
     """Start the MQTT protocol service."""
     conf = config.get(DOMAIN)  # type: Optional[ConfigType]
+
+    # We need this because discovery can cause components to be set up and
+    # otherwise it will not load the users config.
+    # This needs a better solution.
+    hass.data[DATA_MQTT_HASS_CONFIG] = config
 
     if conf is None:
         # If we have a config entry, setup is done by that config entry.
@@ -389,13 +421,6 @@ async def async_setup(hass: HomeAssistantType, config: ConfigType) -> bool:
             data={}
         ))
 
-    if conf.get(CONF_DISCOVERY):
-        async def async_setup_discovery(event):
-            await _async_setup_discovery(hass, config)
-
-        hass.bus.async_listen_once(
-            EVENT_HOMEASSISTANT_START, async_setup_discovery)
-
     return True
 
 
@@ -413,7 +438,7 @@ async def async_setup_entry(hass, entry):
     # If user didn't have configuration.yaml config, generate defaults
     if conf is None:
         conf = CONFIG_SCHEMA({
-            DOMAIN: entry.data
+            DOMAIN: entry.data,
         })[DOMAIN]
     elif any(key in conf for key in entry.data):
         _LOGGER.warning(
@@ -428,24 +453,21 @@ async def async_setup_entry(hass, entry):
     keepalive = conf[CONF_KEEPALIVE]
     username = conf.get(CONF_USERNAME)
     password = conf.get(CONF_PASSWORD)
+    certificate = conf.get(CONF_CERTIFICATE)
     client_key = conf.get(CONF_CLIENT_KEY)
     client_cert = conf.get(CONF_CLIENT_CERT)
     tls_insecure = conf.get(CONF_TLS_INSECURE)
     protocol = conf[CONF_PROTOCOL]
 
     # For cloudmqtt.com, secured connection, auto fill in certificate
-    if (conf.get(CONF_CERTIFICATE) is None and
-            19999 < conf[CONF_PORT] < 30000 and
-            conf[CONF_BROKER].endswith('.cloudmqtt.com')):
+    if (certificate is None and 19999 < conf[CONF_PORT] < 30000 and
+            broker.endswith('.cloudmqtt.com')):
         certificate = os.path.join(
             os.path.dirname(__file__), 'addtrustexternalcaroot.crt')
 
     # When the certificate is set to auto, use bundled certs from requests
-    elif conf.get(CONF_CERTIFICATE) == 'auto':
+    elif certificate == 'auto':
         certificate = requests.certs.where()
-
-    else:
-        certificate = None
 
     if CONF_WILL_MESSAGE in conf:
         will_message = Message(**conf[CONF_WILL_MESSAGE])
@@ -526,6 +548,10 @@ async def async_setup_entry(hass, entry):
     hass.services.async_register(
         DOMAIN, SERVICE_PUBLISH, async_publish_service,
         schema=MQTT_PUBLISH_SCHEMA)
+
+    if conf.get(CONF_DISCOVERY):
+        await _async_setup_discovery(
+            hass, conf, hass.data[DATA_MQTT_HASS_CONFIG], entry)
 
     return True
 
@@ -671,7 +697,7 @@ class MQTT:
             if any(other.topic == topic for other in self.subscriptions):
                 # Other subscriptions on topic remaining - don't unsubscribe.
                 return
-            self.hass.async_add_job(self._async_unsubscribe(topic))
+            self.hass.async_create_task(self._async_unsubscribe(topic))
 
         return async_remove
 
@@ -833,3 +859,74 @@ class MqttAvailability(Entity):
     def available(self) -> bool:
         """Return if the device is available."""
         return self._available
+
+
+class MqttDiscoveryUpdate(Entity):
+    """Mixin used to handle updated discovery message."""
+
+    def __init__(self, discovery_hash) -> None:
+        """Initialize the discovery update mixin."""
+        self._discovery_hash = discovery_hash
+        self._remove_signal = None
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to discovery updates."""
+        from homeassistant.helpers.dispatcher import async_dispatcher_connect
+        from homeassistant.components.mqtt.discovery import (
+            ALREADY_DISCOVERED, MQTT_DISCOVERY_UPDATED)
+
+        @callback
+        def discovery_callback(payload):
+            """Handle discovery update."""
+            _LOGGER.info("Got update for entity with hash: %s '%s'",
+                         self._discovery_hash, payload)
+            if not payload:
+                # Empty payload: Remove component
+                _LOGGER.info("Removing component: %s", self.entity_id)
+                self.hass.async_create_task(self.async_remove())
+                del self.hass.data[ALREADY_DISCOVERED][self._discovery_hash]
+                self._remove_signal()
+
+        if self._discovery_hash:
+            self._remove_signal = async_dispatcher_connect(
+                self.hass,
+                MQTT_DISCOVERY_UPDATED.format(self._discovery_hash),
+                discovery_callback)
+
+
+class MqttEntityDeviceInfo(Entity):
+    """Mixin used for mqtt platforms that support the device registry."""
+
+    def __init__(self, device_config: Optional[ConfigType]) -> None:
+        """Initialize the device mixin."""
+        self._device_config = device_config
+
+    @property
+    def device_info(self):
+        """Return a device description for device registry."""
+        if not self._device_config:
+            return None
+
+        info = {
+            'identifiers': {
+                (DOMAIN, id_)
+                for id_ in self._device_config[CONF_IDENTIFIERS]
+            },
+            'connections': {
+                tuple(x) for x in self._device_config[CONF_CONNECTIONS]
+            }
+        }
+
+        if CONF_MANUFACTURER in self._device_config:
+            info['manufacturer'] = self._device_config[CONF_MANUFACTURER]
+
+        if CONF_MODEL in self._device_config:
+            info['model'] = self._device_config[CONF_MODEL]
+
+        if CONF_NAME in self._device_config:
+            info['name'] = self._device_config[CONF_NAME]
+
+        if CONF_SW_VERSION in self._device_config:
+            info['sw_version'] = self._device_config[CONF_SW_VERSION]
+
+        return info
