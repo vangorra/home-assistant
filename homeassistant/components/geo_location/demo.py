@@ -8,7 +8,6 @@ import logging
 import random
 from datetime import timedelta
 from math import pi, cos, sin, radians
-
 from typing import Optional
 
 from homeassistant.components.geo_location import GeoLocationEvent
@@ -26,6 +25,8 @@ EVENT_NAMES = ["Bushfire", "Hazard Reduction", "Grass Fire", "Burn off",
                "Structure Fire", "Fire Alarm", "Thunderstorm", "Tornado",
                "Cyclone", "Waterspout", "Dust Storm", "Blizzard", "Ice Storm",
                "Earthquake", "Tsunami"]
+
+SOURCE = 'demo'
 
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
@@ -100,6 +101,11 @@ class DemoGeoLocationEvent(GeoLocationEvent):
         self._latitude = latitude
         self._longitude = longitude
         self._unit_of_measurement = unit_of_measurement
+
+    @property
+    def source(self) -> str:
+        """Return source value of this external event."""
+        return SOURCE
 
     @property
     def name(self) -> Optional[str]:
