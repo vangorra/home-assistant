@@ -180,9 +180,9 @@ class CircadianLighting(object):
             solar_noon = location.solar_noon(date)
             solar_midnight = location.solar_midnight(date)
         if self.data['sunrise_offset'] is not None:
-            sunrise = sunrise + timedelta(self.data['sunrise_offset'])
+            sunrise = sunrise + self.data['sunrise_offset']
         if self.data['sunset_offset'] is not None:
-            sunset = sunset + timedelta(self.data['sunset_offset'])
+            sunset = sunset + self.data['sunset_offset']
         return {
             'sunrise': sunrise,
             'sunset': sunset,
