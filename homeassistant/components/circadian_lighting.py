@@ -138,6 +138,8 @@ class CircadianLighting(object):
         self.data['transition'] = transition
         self.data['percent'] = self.calc_percent()
         self.data['colortemp'] = self.calc_colortemp()
+        self.data['rgb_color'] = self.calc_rgb()
+        self.data['xy_color'] = self.calc_xy()
         self.data['hs_color'] = self.calc_hs()
 
         self.update = Throttle(timedelta(seconds=interval))(self._update)
@@ -263,23 +265,30 @@ class CircadianLighting(object):
         else:
             return self.data['min_colortemp']
 
-    def calc_hs(self):
-        rgb = color_temperature_to_rgb(self.data['colortemp'])
+    def calc_rgb(self):
+        return color_temperature_to_rgb(self.data['colortemp'])
+
+    def calc_xy(self):
+        rgb = self.calc_rgb()
         iR = rgb[0]
         iG = rgb[1]
         iB = rgb[2]
 
-        xy = color_RGB_to_xy(iR, iG, iB)
+        return color_RGB_to_xy(iR, iG, iB)
+
+    def calc_hs(self):
+        xy = self.calc_xy()
         vX = xy[0]
         vY = xy[1]
 
-        hs = color_xy_to_hs(vX, vY)
-        return hs
+        return color_xy_to_hs(vX, vY)
 
     def _update(self, *args, **kwargs):
         """Update Circadian Values."""
         self.data['percent'] = self.calc_percent()
         self.data['colortemp'] = self.calc_colortemp()
+        self.data['rgb_color'] = self.calc_rgb()
+        self.data['xy_color'] = self.calc_xy()
         self.data['hs_color'] = self.calc_hs()
         dispatcher_send(self.hass, CIRCADIAN_LIGHTING_UPDATE_TOPIC)
         _LOGGER.debug("Circadian Lighting Component Updated")
