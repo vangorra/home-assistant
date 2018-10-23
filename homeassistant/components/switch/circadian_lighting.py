@@ -283,6 +283,8 @@ class CircadianSwitch(SwitchDevice):
                         service_data = {ATTR_ENTITY_ID: light}
                         if rgb is not None:
                             service_data[ATTR_RGB_COLOR] = rgb
+                        if brightness is not None:
+                            service_data[ATTR_BRIGHTNESS] = brightness
                         if transition is not None:
                             service_data[ATTR_TRANSITION] = transition
                         self.hass.services.call(
