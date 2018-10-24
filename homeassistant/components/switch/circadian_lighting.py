@@ -200,16 +200,20 @@ class CircadianSwitch(SwitchDevice):
         self.schedule_update_ha_state()
         self._hs_color = None
         self._attributes['hs_color'] = self._hs_color
+        self._attributes['brightness'] = None
+
+    def is_sleep(self):
+        return self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']).state == self._attributes['sleep_state']
 
     def calc_ct(self):
-        if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']).state == self._attributes['sleep_state']:
+        if self.is_sleep():
             _LOGGER.debug(self._name + " in Sleep mode")
             return color_temperature_kelvin_to_mired(self._attributes['sleep_colortemp'])
         else:
             return color_temperature_kelvin_to_mired(self._cl.data['colortemp'])
 
     def calc_rgb(self):
-        if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']).state == self._attributes['sleep_state']:
+        if self.is_sleep():
             _LOGGER.debug(self._name + " in Sleep mode")
             return color_temperature_to_rgb(self._attributes['sleep_colortemp'])
         else:
@@ -222,7 +226,7 @@ class CircadianSwitch(SwitchDevice):
         if self._attributes['disable_brightness_adjust'] is True:
             return None
         else:
-            if self._attributes['sleep_entity'] is not None and self.hass.states.get(self._attributes['sleep_entity']).state == self._attributes['sleep_state']:
+            if self.is_sleep():
                 _LOGGER.debug(self._name + " in Sleep mode")
                 return self._attributes['sleep_brightness']
             else:
