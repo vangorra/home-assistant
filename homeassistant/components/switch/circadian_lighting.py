@@ -113,7 +113,7 @@ class CircadianSwitch(SwitchDevice):
         self._entity_id = "switch." + slugify("{} {}".format('circadian_lighting', name))
         self._state = None
         self._icon = ICON
-        self._hs_color = self._cl.data['hs_color']
+        self._hs_color = None
         self._attributes = {}
         self._attributes['lights_ct'] = lights_ct
         self._attributes['lights_rgb'] = lights_rgb
@@ -129,7 +129,7 @@ class CircadianSwitch(SwitchDevice):
         self._attributes['disable_entity'] = disable_entity
         self._attributes['disable_state'] = disable_state
         self._attributes['hs_color'] = self._hs_color
-        self._attributes['brightness'] = self.calc_brightness()
+        self._attributes['brightness'] = None
 
         self._lights = []
         if lights_ct != None:
