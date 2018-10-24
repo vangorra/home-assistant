@@ -23,7 +23,8 @@ from homeassistant.const import (
     SERVICE_TURN_ON)
 from homeassistant.util import slugify
 from homeassistant.util.color import (
-    color_RGB_to_xy, color_temperature_kelvin_to_mired, color_temperature_to_rgb)
+    color_RGB_to_xy, color_temperature_kelvin_to_mired,
+    color_temperature_to_rgb, color_xy_to_hs)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -222,6 +223,9 @@ class CircadianSwitch(SwitchDevice):
     def calc_xy(self):
         return color_RGB_to_xy(*self.calc_rgb())
 
+    def calc_hs(self):
+        return color_xy_to_hs(*self.calc_xy())
+
     def calc_brightness(self):
         if self._attributes['disable_brightness_adjust'] is True:
             return None
@@ -235,14 +239,14 @@ class CircadianSwitch(SwitchDevice):
                 else:
                     return ((self._attributes['max_brightness'] - self._attributes['min_brightness']) * ((100+self._cl.data['percent']) / 100)) + self._attributes['min_brightness']
 
-    def update_switch(self):
+    def update_switch(self, transition=None):
         if self._cl.data is not None:
-            self._hs_color = self._cl.data['hs_color']
+            self._hs_color = self.calc_hs()
             self._attributes['hs_color'] = self._hs_color
             self._attributes['brightness'] = self.calc_brightness()
             _LOGGER.debug(self._name + " Switch Updated")
 
-        self.adjust_lights(self._lights)
+        self.adjust_lights(self._lights, transition)
 
     def should_adjust(self):
         if self._state is not True:
@@ -327,5 +331,5 @@ class CircadianSwitch(SwitchDevice):
         self.adjust_lights([entity_id], 1)
 
     def sleep_state_changed(self, entity_id, from_state, to_state):
-        if to_state.state == self._attributes['sleep_state']:
-            self.adjust_lights(self._lights, 1)
+        if to_state.state == self._attributes['sleep_state'] or from_state.state == self._attributes['sleep_state']:
+            self.update_switch(1)
