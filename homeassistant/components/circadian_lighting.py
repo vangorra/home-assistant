@@ -51,7 +51,7 @@ from datetime import datetime, timedelta
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = 'circadian_lighting'
-CIRCADIAN_LIGHTING_PLATROFMS = ['sensor', 'switch']
+CIRCADIAN_LIGHTING_PLATFORMS = ['sensor', 'switch']
 CIRCADIAN_LIGHTING_UPDATE_TOPIC = '{0}_update'.format(DOMAIN)
 DATA_CIRCADIAN_LIGHTING = 'data_cl'
 
