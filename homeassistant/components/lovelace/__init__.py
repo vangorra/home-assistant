@@ -24,13 +24,20 @@ FORMAT_JSON = 'json'
 OLD_WS_TYPE_GET_LOVELACE_UI = 'frontend/lovelace_config'
 WS_TYPE_GET_LOVELACE_UI = 'lovelace/config'
 
+WS_TYPE_MIGRATE_CONFIG = 'lovelace/config/migrate'
 WS_TYPE_GET_CARD = 'lovelace/config/card/get'
 WS_TYPE_UPDATE_CARD = 'lovelace/config/card/update'
 WS_TYPE_ADD_CARD = 'lovelace/config/card/add'
+WS_TYPE_MOVE_CARD = 'lovelace/config/card/move'
+WS_TYPE_DELETE_CARD = 'lovelace/config/card/delete'
 
 SCHEMA_GET_LOVELACE_UI = websocket_api.BASE_COMMAND_MESSAGE_SCHEMA.extend({
     vol.Required('type'): vol.Any(WS_TYPE_GET_LOVELACE_UI,
                                   OLD_WS_TYPE_GET_LOVELACE_UI),
+})
+
+SCHEMA_MIGRATE_CONFIG = websocket_api.BASE_COMMAND_MESSAGE_SCHEMA.extend({
+    vol.Required('type'): WS_TYPE_MIGRATE_CONFIG,
 })
 
 SCHEMA_GET_CARD = websocket_api.BASE_COMMAND_MESSAGE_SCHEMA.extend({
@@ -57,6 +64,18 @@ SCHEMA_ADD_CARD = websocket_api.BASE_COMMAND_MESSAGE_SCHEMA.extend({
                                                          FORMAT_YAML),
 })
 
+SCHEMA_MOVE_CARD = websocket_api.BASE_COMMAND_MESSAGE_SCHEMA.extend({
+    vol.Required('type'): WS_TYPE_MOVE_CARD,
+    vol.Required('card_id'): str,
+    vol.Optional('new_position'): int,
+    vol.Optional('new_view_id'): str,
+})
+
+SCHEMA_DELETE_CARD = websocket_api.BASE_COMMAND_MESSAGE_SCHEMA.extend({
+    vol.Required('type'): WS_TYPE_DELETE_CARD,
+    vol.Required('card_id'): str,
+})
+
 
 class WriteError(HomeAssistantError):
     """Error writing the data."""
@@ -72,6 +91,10 @@ class ViewNotFoundError(HomeAssistantError):
 
 class UnsupportedYamlError(HomeAssistantError):
     """Unsupported YAML."""
+
+
+class DuplicateIdError(HomeAssistantError):
+    """Duplicate ID's."""
 
 
 def save_yaml(fname: str, data: JSON_TYPE):
@@ -132,21 +155,41 @@ def load_yaml(fname: str) -> JSON_TYPE:
 
 
 def load_config(fname: str) -> JSON_TYPE:
+    """Load a YAML file."""
+    return load_yaml(fname)
+
+
+def migrate_config(fname: str) -> JSON_TYPE:
     """Load a YAML file and adds id to views and cards if not present."""
     config = load_yaml(fname)
-    # Check if all views and cards have an id or else add one
+    # Check if all views and cards have a unique id or else add one
     updated = False
+    seen_card_ids = set()
+    seen_view_ids = set()
     index = 0
     for view in config.get('views', []):
-        if 'id' not in view:
+        view_id = view.get('id')
+        if view_id is None:
             updated = True
             view.insert(0, 'id', index,
                         comment="Automatically created id")
+        else:
+            if view_id in seen_view_ids:
+                raise DuplicateIdError(
+                    'ID `{}` has multiple occurances in views'.format(view_id))
+            seen_view_ids.add(view_id)
         for card in view.get('cards', []):
-            if 'id' not in card:
+            card_id = card.get('id')
+            if card_id is None:
                 updated = True
                 card.insert(0, 'id', uuid.uuid4().hex,
                             comment="Automatically created id")
+            else:
+                if card_id in seen_card_ids:
+                    raise DuplicateIdError(
+                        'ID `{}` has multiple occurances in cards'
+                        .format(card_id))
+                seen_card_ids.add(card_id)
         index += 1
     if updated:
         save_yaml(fname, config)
@@ -187,7 +230,7 @@ def get_card(fname: str, card_id: str, data_format: str = FORMAT_YAML)\
     config = load_yaml(fname)
     for view in config.get('views', []):
         for card in view.get('cards', []):
-            if card.get('id') != card_id:
+            if str(card.get('id')) != card_id:
                 continue
             if data_format == FORMAT_YAML:
                 return object_to_yaml(card)
@@ -203,7 +246,7 @@ def update_card(fname: str, card_id: str, card_config: str,
     config = load_yaml(fname)
     for view in config.get('views', []):
         for card in view.get('cards', []):
-            if card.get('id') != card_id:
+            if str(card.get('id')) != card_id:
                 continue
             if data_format == FORMAT_YAML:
                 card_config = yaml_to_object(card_config)
@@ -220,7 +263,7 @@ def add_card(fname: str, view_id: str, card_config: str,
     """Add a card to a view."""
     config = load_yaml(fname)
     for view in config.get('views', []):
-        if view.get('id') != view_id:
+        if str(view.get('id')) != view_id:
             continue
         cards = view.get('cards', [])
         if data_format == FORMAT_YAML:
@@ -236,12 +279,81 @@ def add_card(fname: str, view_id: str, card_config: str,
         "View with ID: {} was not found in {}.".format(view_id, fname))
 
 
+def move_card(fname: str, card_id: str, position: int = None):
+    """Move a card to a different position."""
+    if position is None:
+        raise HomeAssistantError('Position is required if view is not\
+                                 specified.')
+    config = load_yaml(fname)
+    for view in config.get('views', []):
+        for card in view.get('cards', []):
+            if str(card.get('id')) != card_id:
+                continue
+            cards = view.get('cards')
+            cards.insert(position, cards.pop(cards.index(card)))
+            save_yaml(fname, config)
+            return
+
+    raise CardNotFoundError(
+        "Card with ID: {} was not found in {}.".format(card_id, fname))
+
+
+def move_card_view(fname: str, card_id: str, view_id: str,
+                   position: int = None):
+    """Move a card to a different view."""
+    config = load_yaml(fname)
+    for view in config.get('views', []):
+        if str(view.get('id')) == view_id:
+            destination = view.get('cards')
+        for card in view.get('cards'):
+            if str(card.get('id')) != card_id:
+                continue
+            origin = view.get('cards')
+            card_to_move = card
+
+    if 'destination' not in locals():
+        raise ViewNotFoundError(
+            "View with ID: {} was not found in {}.".format(view_id, fname))
+    if 'card_to_move' not in locals():
+        raise CardNotFoundError(
+            "Card with ID: {} was not found in {}.".format(card_id, fname))
+
+    origin.pop(origin.index(card_to_move))
+
+    if position is None:
+        destination.append(card_to_move)
+    else:
+        destination.insert(position, card_to_move)
+
+    save_yaml(fname, config)
+
+
+def delete_card(fname: str, card_id: str, position: int = None):
+    """Delete a card from view."""
+    config = load_yaml(fname)
+    for view in config.get('views', []):
+        for card in view.get('cards', []):
+            if str(card.get('id')) != card_id:
+                continue
+            cards = view.get('cards')
+            cards.pop(cards.index(card))
+            save_yaml(fname, config)
+            return
+
+    raise CardNotFoundError(
+        "Card with ID: {} was not found in {}.".format(card_id, fname))
+
+
 async def async_setup(hass, config):
     """Set up the Lovelace commands."""
     # Backwards compat. Added in 0.80. Remove after 0.85
     hass.components.websocket_api.async_register_command(
         OLD_WS_TYPE_GET_LOVELACE_UI, websocket_lovelace_config,
         SCHEMA_GET_LOVELACE_UI)
+
+    hass.components.websocket_api.async_register_command(
+        WS_TYPE_MIGRATE_CONFIG, websocket_lovelace_migrate_config,
+        SCHEMA_MIGRATE_CONFIG)
 
     hass.components.websocket_api.async_register_command(
         WS_TYPE_GET_LOVELACE_UI, websocket_lovelace_config,
@@ -259,6 +371,14 @@ async def async_setup(hass, config):
         WS_TYPE_ADD_CARD, websocket_lovelace_add_card,
         SCHEMA_ADD_CARD)
 
+    hass.components.websocket_api.async_register_command(
+        WS_TYPE_MOVE_CARD, websocket_lovelace_move_card,
+        SCHEMA_MOVE_CARD)
+
+    hass.components.websocket_api.async_register_command(
+        WS_TYPE_DELETE_CARD, websocket_lovelace_delete_card,
+        SCHEMA_DELETE_CARD)
+
     return True
 
 
@@ -269,6 +389,30 @@ async def websocket_lovelace_config(hass, connection, msg):
     try:
         config = await hass.async_add_executor_job(
             load_config, hass.config.path(LOVELACE_CONFIG_FILE))
+        message = websocket_api.result_message(
+            msg['id'], config
+        )
+    except FileNotFoundError:
+        error = ('file_not_found',
+                 'Could not find ui-lovelace.yaml in your config dir.')
+    except UnsupportedYamlError as err:
+        error = 'unsupported_error', str(err)
+    except HomeAssistantError as err:
+        error = 'load_error', str(err)
+
+    if error is not None:
+        message = websocket_api.error_message(msg['id'], *error)
+
+    connection.send_message(message)
+
+
+@websocket_api.async_response
+async def websocket_lovelace_migrate_config(hass, connection, msg):
+    """Migrate lovelace UI config."""
+    error = None
+    try:
+        config = await hass.async_add_executor_job(
+            migrate_config, hass.config.path(LOVELACE_CONFIG_FILE))
         message = websocket_api.result_message(
             msg['id'], config
         )
@@ -322,7 +466,7 @@ async def websocket_lovelace_update_card(hass, connection, msg):
             update_card, hass.config.path(LOVELACE_CONFIG_FILE),
             msg['card_id'], msg['card_config'], msg.get('format', FORMAT_YAML))
         message = websocket_api.result_message(
-            msg['id'], True
+            msg['id']
         )
     except FileNotFoundError:
         error = ('file_not_found',
@@ -350,7 +494,7 @@ async def websocket_lovelace_add_card(hass, connection, msg):
             msg['view_id'], msg['card_config'], msg.get('position'),
             msg.get('format', FORMAT_YAML))
         message = websocket_api.result_message(
-            msg['id'], True
+            msg['id']
         )
     except FileNotFoundError:
         error = ('file_not_found',
@@ -359,6 +503,68 @@ async def websocket_lovelace_add_card(hass, connection, msg):
         error = 'unsupported_error', str(err)
     except ViewNotFoundError as err:
         error = 'view_not_found', str(err)
+    except HomeAssistantError as err:
+        error = 'save_error', str(err)
+
+    if error is not None:
+        message = websocket_api.error_message(msg['id'], *error)
+
+    connection.send_message(message)
+
+
+@websocket_api.async_response
+async def websocket_lovelace_move_card(hass, connection, msg):
+    """Move card to different position over websocket and save."""
+    error = None
+    try:
+        if 'new_view_id' in msg:
+            await hass.async_add_executor_job(
+                move_card_view, hass.config.path(LOVELACE_CONFIG_FILE),
+                msg['card_id'], msg['new_view_id'], msg.get('new_position'))
+        else:
+            await hass.async_add_executor_job(
+                move_card, hass.config.path(LOVELACE_CONFIG_FILE),
+                msg['card_id'], msg.get('new_position'))
+
+        message = websocket_api.result_message(
+            msg['id']
+        )
+    except FileNotFoundError:
+        error = ('file_not_found',
+                 'Could not find ui-lovelace.yaml in your config dir.')
+    except UnsupportedYamlError as err:
+        error = 'unsupported_error', str(err)
+    except ViewNotFoundError as err:
+        error = 'view_not_found', str(err)
+    except CardNotFoundError as err:
+        error = 'card_not_found', str(err)
+    except HomeAssistantError as err:
+        error = 'save_error', str(err)
+
+    if error is not None:
+        message = websocket_api.error_message(msg['id'], *error)
+
+    connection.send_message(message)
+
+
+@websocket_api.async_response
+async def websocket_lovelace_delete_card(hass, connection, msg):
+    """Delete card from lovelace over websocket and save."""
+    error = None
+    try:
+        await hass.async_add_executor_job(
+            delete_card, hass.config.path(LOVELACE_CONFIG_FILE),
+            msg['card_id'])
+        message = websocket_api.result_message(
+            msg['id']
+        )
+    except FileNotFoundError:
+        error = ('file_not_found',
+                 'Could not find ui-lovelace.yaml in your config dir.')
+    except UnsupportedYamlError as err:
+        error = 'unsupported_error', str(err)
+    except CardNotFoundError as err:
+        error = 'card_not_found', str(err)
     except HomeAssistantError as err:
         error = 'save_error', str(err)
 
