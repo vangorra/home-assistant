@@ -103,7 +103,7 @@ def setup(hass, config):
     else:
         longitude = conf.get(CONF_LONGITUDE)
 
-    load_platform(hass, 'sensor', DOMAIN)
+    load_platform(hass, 'sensor', DOMAIN, {}, config)
 
     interval = conf.get(CONF_INTERVAL)
     transition = conf.get(ATTR_TRANSITION)
