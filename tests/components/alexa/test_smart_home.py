@@ -873,22 +873,41 @@ async def test_thermostat(hass):
     )
     assert msg['event']['payload']['type'] == 'TEMPERATURE_VALUE_OUT_OF_RANGE'
 
-    call, _ = await assert_request_calls_service(
+    # Setting mode, the payload can be an object with a value attribute...
+    call, msg = await assert_request_calls_service(
         'Alexa.ThermostatController', 'SetThermostatMode',
         'climate#test_thermostat', 'climate.set_operation_mode',
         hass,
         payload={'thermostatMode': {'value': 'HEAT'}}
     )
     assert call.data['operation_mode'] == 'heat'
+    properties = _ReportedProperties(msg['context']['properties'])
+    properties.assert_equal(
+        'Alexa.ThermostatController', 'thermostatMode', 'HEAT')
 
-    call, _ = await assert_request_calls_service(
+    call, msg = await assert_request_calls_service(
+        'Alexa.ThermostatController', 'SetThermostatMode',
+        'climate#test_thermostat', 'climate.set_operation_mode',
+        hass,
+        payload={'thermostatMode': {'value': 'COOL'}}
+    )
+    assert call.data['operation_mode'] == 'cool'
+    properties = _ReportedProperties(msg['context']['properties'])
+    properties.assert_equal(
+        'Alexa.ThermostatController', 'thermostatMode', 'COOL')
+
+    # ...it can also be just the mode.
+    call, msg = await assert_request_calls_service(
         'Alexa.ThermostatController', 'SetThermostatMode',
         'climate#test_thermostat', 'climate.set_operation_mode',
         hass,
         payload={'thermostatMode': 'HEAT'}
     )
-
     assert call.data['operation_mode'] == 'heat'
+    properties = _ReportedProperties(msg['context']['properties'])
+    properties.assert_equal(
+        'Alexa.ThermostatController', 'thermostatMode', 'HEAT')
+
     msg = await assert_request_fails(
         'Alexa.ThermostatController', 'SetThermostatMode',
         'climate#test_thermostat', 'climate.set_operation_mode',
@@ -966,6 +985,32 @@ async def test_include_filters(hass):
     msg = msg['event']
 
     assert len(msg['payload']['endpoints']) == 3
+
+
+async def test_never_exposed_entities(hass):
+    """Test never exposed locks do not get discovered."""
+    request = get_new_request('Alexa.Discovery', 'Discover')
+
+    # setup test devices
+    hass.states.async_set(
+        'group.all_locks', 'on', {'friendly_name': "Blocked locks"})
+
+    hass.states.async_set(
+        'group.allow', 'off', {'friendly_name': "Allowed group"})
+
+    config = smart_home.Config(should_expose=entityfilter.generate_filter(
+        include_domains=['group'],
+        include_entities=[],
+        exclude_domains=[],
+        exclude_entities=[],
+    ))
+
+    msg = await smart_home.async_handle_message(hass, config, request)
+    await hass.async_block_till_done()
+
+    msg = msg['event']
+
+    assert len(msg['payload']['endpoints']) == 1
 
 
 async def test_api_entity_not_exists(hass):

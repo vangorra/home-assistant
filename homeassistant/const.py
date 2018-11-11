@@ -140,6 +140,7 @@ CONF_TIME_ZONE = 'time_zone'
 CONF_TIMEOUT = 'timeout'
 CONF_TOKEN = 'token'
 CONF_TRIGGER_TIME = 'trigger_time'
+CONF_TTL = 'ttl'
 CONF_TYPE = 'type'
 CONF_UNIT_OF_MEASUREMENT = 'unit_of_measurement'
 CONF_UNIT_SYSTEM = 'unit_system'
@@ -448,3 +449,7 @@ WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 PRECISION_WHOLE = 1
 PRECISION_HALVES = 0.5
 PRECISION_TENTHS = 0.1
+
+# Static list of entities that will never be exposed to
+# cloud, alexa, or google_home components
+CLOUD_NEVER_EXPOSED_ENTITIES = ['group.all_locks']
