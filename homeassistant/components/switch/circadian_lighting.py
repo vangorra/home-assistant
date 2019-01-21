@@ -5,6 +5,9 @@ Circadian Lighting Switch for Home-Assistant.
 DEPENDENCIES = ['circadian_lighting', 'light']
 
 import logging
+import csv
+import os
+import asyncio
 
 from custom_components.circadian_lighting import DOMAIN, CIRCADIAN_LIGHTING_UPDATE_TOPIC, DATA_CIRCADIAN_LIGHTING
 
@@ -13,10 +16,11 @@ import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import dispatcher_connect
 from homeassistant.helpers.event import track_state_change
-from homeassistant.helpers.restore_state import async_get_last_state
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.components.light import (
     is_on, ATTR_BRIGHTNESS, ATTR_COLOR_TEMP, ATTR_RGB_COLOR, ATTR_TRANSITION,
-    ATTR_WHITE_VALUE, ATTR_XY_COLOR, DOMAIN as LIGHT_DOMAIN)
+    ATTR_WHITE_VALUE, ATTR_XY_COLOR, DOMAIN as LIGHT_DOMAIN,
+    LIGHT_PROFILES_FILE)
 from homeassistant.components.switch import SwitchDevice
 from homeassistant.const import (
     ATTR_ENTITY_ID, CONF_NAME, CONF_PLATFORM, STATE_ON,
@@ -99,8 +103,80 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     else:
         return False
 
+async def async_save_light_profiles(hass, lights, x, y, brightness):
+    brightness_rounded = int(round(brightness, 0))
+    
+    _LOGGER.debug('Creating new profiles from with x: {}, y: {}, brightness: {}, lights: {}.'.format(x, y, brightness_rounded, str(lights)))
+    new_profiles_dict = {}
+    for light in lights:
+        profile_id = light + '.default'
+        new_profiles_dict[profile_id] = [profile_id, x, y, brightness_rounded]
+    
+    _LOGGER.debug('New profiles: {}'.format(str(new_profiles_dict)))
+    
+    profiles_file_path = hass.config.path(LIGHT_PROFILES_FILE)
+    profiles_file_lock_path = hass.config.path(LIGHT_PROFILES_FILE + '.lock')
+    
+    _LOGGER.debug("Attempting to get a lock on the file.")
+    is_lock_aquired = False
+    for i in range(100):
+        if os.path.isfile(profiles_file_lock_path):
+            await asyncio.sleep(0.1)
+            continue
+        else:
+            open(profiles_file_lock_path, 'a').close()
+            is_lock_aquired = True
+            break
+    
+    if not is_lock_aquired:
+        _LOGGER.error("Failed to aquire a lock on {}".format(profiles_file_path))
+        return
+    
+    try:
+        profiles_data = []
+        
+        # Read from existing light profiles file.
+        if os.path.isfile(profiles_file_path):
+            _LOGGER.debug("Reading profiles from {}".format(profiles_file_path))
+            with open(profiles_file_path) as inp:
+                reader = csv.reader(inp)
+        
+                # Skip the header
+                next(reader, None)
+        
+                for rec in reader:
+                    profile_id = rec[0]
+                    
+                    # Overwrite the existing row with the new one.
+                    if profile_id in new_profiles_dict:
+                        profiles_data.append(new_profiles_dict[profile_id])
+                        del new_profiles_dict[profile_id]
+                    # Preserve existing light profile data.
+                    else:
+                        profiles_data.append(rec)
+        
+        _LOGGER.debug('Appending remaining {} lights to profile.'.format(len(new_profiles_dict)))
+        for profile_id in new_profiles_dict:
+            profiles_data.append(new_profiles_dict[profile_id])
+        
+        _LOGGER.debug('Writing new light profiles to: {}'.format(profiles_file_path))
+        _LOGGER.debug('New profile rows: {}'.format(str(profiles_data)))
+        with open(profiles_file_path, mode='w') as outp:
+            writer = csv.writer(outp)
+            
+            _LOGGER.debug('Writing the header.')
+            writer.writerow(['id', 'x', 'y', 'brightness'])
+            
+            for profile_data in profiles_data:
+                writer.writerow(profile_data)
+    except Exception:
+        _LOGGER.error("Failed to save new light profiles.", exc_info=True)
+        
+    _LOGGER.debug("Removing lockfile {}".format(profiles_file_lock_path))
+    os.remove(profiles_file_lock_path)
 
-class CircadianSwitch(SwitchDevice):
+
+class CircadianSwitch(SwitchDevice, RestoreEntity):
     """Representation of a Circadian Lighting switch."""
 
     def __init__(self, hass, cl, name, lights_ct, lights_rgb, lights_xy, lights_brightness,
@@ -166,10 +242,11 @@ class CircadianSwitch(SwitchDevice):
     async def async_added_to_hass(self):
         """Call when entity about to be added to hass."""
         # If not None, we got an initial value.
+        await super().async_added_to_hass()
         if self._state is not None:
             return
 
-        state = await async_get_last_state(self.hass, self._entity_id)
+        state = await self.async_get_last_state()
         self._state = state and state.state == STATE_ON
 
     @property
@@ -246,7 +323,14 @@ class CircadianSwitch(SwitchDevice):
             self._attributes['brightness'] = self.calc_brightness()
             _LOGGER.debug(self._name + " Switch Updated")
 
+        self.save_light_profiles(self._lights)
         self.adjust_lights(self._lights, transition)
+
+    def save_light_profiles(self, lights):
+        x_val, y_val = self.calc_xy()
+        brightness = self.calc_brightness()
+        
+        self.hass.add_job(async_save_light_profiles, self.hass, lights, x_val, y_val, brightness)
 
     def should_adjust(self):
         if self._state is not True:
@@ -260,7 +344,7 @@ class CircadianSwitch(SwitchDevice):
             return False
         else:
             return True
-
+            
     def adjust_lights(self, lights, transition=None):
         if self.should_adjust():
             if transition == None:
