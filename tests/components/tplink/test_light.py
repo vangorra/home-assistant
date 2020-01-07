@@ -4,6 +4,10 @@ from unittest.mock import patch
 from pyHS100 import SmartBulb
 
 from homeassistant.components import tplink
+from homeassistant.components.homeassistant import (
+    DOMAIN as HA_DOMAIN,
+    SERVICE_UPDATE_ENTITY,
+)
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP,
@@ -113,6 +117,9 @@ async def test_light(hass: HomeAssistant) -> None:
     )
 
     with set_light_state_patch, get_light_state_patch, current_consumption_patch, get_sysinfo_patch, get_emeter_daily_patch, get_emeter_monthly_patch:
+        await async_setup_component(hass, HA_DOMAIN, {})
+        await hass.async_block_till_done()
+
         await async_setup_component(
             hass,
             tplink.DOMAIN,
@@ -138,8 +145,6 @@ async def test_light(hass: HomeAssistant) -> None:
         assert hass.states.get("light.light1").state == "off"
         assert light_state["on_off"] == 0
 
-        await hass.async_block_till_done()
-
         await hass.services.async_call(
             LIGHT_DOMAIN,
             SERVICE_TURN_ON,
@@ -150,7 +155,6 @@ async def test_light(hass: HomeAssistant) -> None:
             },
             blocking=True,
         )
-
         await hass.async_block_till_done()
 
         state = hass.states.get("light.light1")
@@ -170,7 +174,6 @@ async def test_light(hass: HomeAssistant) -> None:
             },
             blocking=True,
         )
-
         await hass.async_block_till_done()
 
         state = hass.states.get("light.light1")
@@ -199,7 +202,6 @@ async def test_light(hass: HomeAssistant) -> None:
             {ATTR_ENTITY_ID: "light.light1"},
             blocking=True,
         )
-
         await hass.async_block_till_done()
 
         state = hass.states.get("light.light1")
@@ -211,7 +213,6 @@ async def test_light(hass: HomeAssistant) -> None:
             {ATTR_ENTITY_ID: "light.light1"},
             blocking=True,
         )
-
         await hass.async_block_till_done()
 
         state = hass.states.get("light.light1")
@@ -221,3 +222,15 @@ async def test_light(hass: HomeAssistant) -> None:
         assert light_state["brightness"] == 65
         assert light_state["hue"] == 77
         assert light_state["saturation"] == 78
+
+        set_light_state({"brightness": 91, "dft_on_state": {"brightness": 91}})
+        await hass.services.async_call(
+            HA_DOMAIN,
+            SERVICE_UPDATE_ENTITY,
+            {ATTR_ENTITY_ID: "light.light1"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+        state = hass.states.get("light.light1")
+        assert state.attributes["brightness"] == 232.05

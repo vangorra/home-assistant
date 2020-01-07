@@ -1,4 +1,5 @@
 """Support for TPLink lights."""
+from datetime import timedelta
 import logging
 import time
 from typing import Any, Dict, NamedTuple, Tuple, cast
@@ -25,6 +26,7 @@ from . import CONF_LIGHT, DOMAIN as TPLINK_DOMAIN
 from .common import async_add_entities_retry
 
 PARALLEL_UPDATES = 0
+SCAN_INTERVAL = timedelta(seconds=10)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -336,6 +338,14 @@ class TPLinkSmartBulb(Light):
         return self._is_available
 
     async def async_set_light_state(
+        self, old_light_state: LightState, new_light_state: LightState
+    ) -> bool:
+        """Set the light state in an async manner."""
+        return await self.hass.async_add_executor_job(
+            self.set_light_state, old_light_state, new_light_state
+        )
+
+    def set_light_state(
         self, old_light_state: LightState, new_light_state: LightState
     ) -> bool:
         """Set the light state."""
