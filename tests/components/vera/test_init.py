@@ -6,6 +6,7 @@ from requests.exceptions import RequestException
 from homeassistant.components.vera import CONF_CONTROLLER, DOMAIN
 from homeassistant.config_entries import ENTRY_STATE_NOT_LOADED
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from .common import ComponentFactory, new_simple_controller_config
 
@@ -35,8 +36,22 @@ async def test_init(
 
     entity_registry = await hass.helpers.entity_registry.async_get_registry()
     entry1 = entity_registry.async_get(entity1_id)
-
     assert entry1
+
+    device_registry = await dr.async_get_registry(hass)
+
+    hub_device_entry = device_registry.async_get_device(
+        {(DOMAIN, "first_serial")}, set()
+    )
+    assert hub_device_entry
+    assert hub_device_entry.manufacturer == "Vera"
+    assert hub_device_entry.model == "Pro"
+
+    device_entry = device_registry.async_get(entry1.device_id)
+    assert device_entry
+    assert device_entry.name == "first_dev"
+    assert device_entry.identifiers == {(DOMAIN, "first_serial")}
+    assert device_entry.via_device_id == hub_device_entry.id
 
 
 async def test_init_from_file(

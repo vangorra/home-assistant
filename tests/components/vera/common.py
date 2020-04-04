@@ -81,17 +81,27 @@ class ComponentFactory:
         controller.register = MagicMock()
         controller.start = MagicMock()
         controller.stop = MagicMock()
-        controller.refresh_data = MagicMock()
         controller.temperature_units = "C"
-        controller.serial_number = controller_config.serial_number
         controller.get_devices = MagicMock(return_value=controller_config.devices)
         controller.get_scenes = MagicMock(return_value=controller_config.scenes)
+
+        controller.model = None
+        controller.version = None
+        controller.serial_number = None
+
+        def refresh_data_callback():
+            controller.model = "Pro"
+            controller.version = "1.2.3"
+            controller.serial_number = controller_config.serial_number
+
+        controller.refresh_data = MagicMock(side_effect=refresh_data_callback)
 
         for vera_obj in controller.get_devices() + controller.get_scenes():
             vera_obj.vera_controller = controller
 
         controller.get_devices.reset_mock()
         controller.get_scenes.reset_mock()
+        controller.refresh_data.reset_mocK()
 
         if controller_config.setup_callback:
             controller_config.setup_callback(controller)

@@ -2,6 +2,7 @@
 import asyncio
 from collections import defaultdict
 import logging
+from typing import Dict
 
 import pyvera as veraApi
 from requests.exceptions import RequestException
@@ -19,7 +20,7 @@ from homeassistant.const import (
     EVENT_HOMEASSISTANT_STOP,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.entity import Entity
 from homeassistant.util import convert, slugify
 from homeassistant.util.dt import utc_from_timestamp
@@ -95,13 +96,21 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     )
 
     try:
+        await hass.async_add_executor_job(controller.refresh_data)
         all_devices = await hass.async_add_executor_job(controller.get_devices)
-
         all_scenes = await hass.async_add_executor_job(controller.get_scenes)
     except RequestException:
         # There was a network related error connecting to the Vera controller.
         _LOGGER.exception("Error communicating with Vera API")
         return False
+
+    device_registry = await dr.async_get_registry(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, controller.serial_number)},
+        manufacturer="Vera",
+        model=controller.model,
+    )
 
     # Exclude devices unwanted by user.
     devices = [device for device in all_devices if device.device_id not in exclude_ids]
@@ -243,3 +252,12 @@ class VeraDevice(Entity):
         The Vera assigns a unique and immutable ID number to each device.
         """
         return str(self.vera_device.vera_device_id)
+
+    @property
+    def device_info(self) -> Dict:
+        """Return device specific attributes."""
+        return {
+            "identifiers": {(DOMAIN, self.controller.serial_number)},
+            "name": self.name,
+            "via_device": (DOMAIN, self.controller.serial_number),
+        }

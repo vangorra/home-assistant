@@ -23,6 +23,8 @@ async def test_async_step_user_success(hass: HomeAssistant) -> None:
         controller = MagicMock()
         controller.refresh_data = MagicMock()
         controller.serial_number = "serial_number_0"
+        controller.model = "model 1"
+        controller.version = "veraion 1"
         vera_controller_class_mock.return_value = controller
 
         result = await hass.config_entries.flow.async_init(
@@ -71,6 +73,8 @@ async def test_async_step_import_success(hass: HomeAssistant) -> None:
         controller = MagicMock()
         controller.refresh_data = MagicMock()
         controller.serial_number = "serial_number_1"
+        controller.model = "model 1"
+        controller.version = "veraion 1"
         vera_controller_class_mock.return_value = controller
 
         result = await hass.config_entries.flow.async_init(
