@@ -1168,9 +1168,6 @@ py17track==2.2.2
 # homeassistant.components.hdmi_cec
 pyCEC==0.4.13
 
-# homeassistant.components.tplink
-pyHS100==0.3.5
-
 # homeassistant.components.met
 # homeassistant.components.norway_air
 pyMetno==0.4.6
@@ -1697,6 +1694,9 @@ python-join-api==0.0.4
 
 # homeassistant.components.juicenet
 python-juicenet==1.0.1
+
+# homeassistant.components.tplink
+python-kasa==0.4.0.dev0
 
 # homeassistant.components.lirc
 # python-lirc==1.2.3
